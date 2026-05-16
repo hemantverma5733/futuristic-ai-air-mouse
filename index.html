@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Air Mouse - Next Gen Hand Control</title>
+    
+    <!-- MediaPipe Dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --bg-color: #050505;
+            --surface-color: #111111;
+            --surface-hover: #1a1a1a;
+            --primary: #00ff88;
+            --secondary: #00d2ff;
+            --accent: #ff007b;
+            --text-main: #ffffff;
+            --text-muted: #888888;
+            --border-color: #222222;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* Animated Background Glow */
+        .bg-glow {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80vw;
+            height: 80vh;
+            background: radial-gradient(circle, rgba(0, 255, 136, 0.05) 0%, rgba(0, 210, 255, 0.05) 50%, rgba(0,0,0,0) 80%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Navbar */
+        nav {
+            padding: 24px 48px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            background: rgba(5, 5, 5, 0.8);
+            backdrop-filter: blur(12px);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* Hero Section */
+        .hero {
+            text-align: center;
+            padding: 100px 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .hero h1 {
+            font-size: 64px;
+            font-weight: 900;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            letter-spacing: -2px;
+        }
+
+        .hero p {
+            font-size: 20px;
+            color: var(--text-muted);
+            margin-bottom: 40px;
+            line-height: 1.5;
+        }
+
+        .btn-primary {
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            color: #000;
+            border: none;
+            padding: 16px 32px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 255, 136, 0.2);
+        }
+
+        /* Features Grid */
+        .features {
+            padding: 60px 48px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .section-title {
+            text-align: center;
+            font-size: 32px;
+            margin-bottom: 48px;
+            font-weight: 800;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 24px;
+        }
+
+        /* Glassmorphism Cards */
+        .card {
+            background: var(--surface-color);
+            border: 1px solid var(--border-color);
+            border-radius: 20px;
+            padding: 32px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Virtual Cursor */
+        .virtual-cursor {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 24px;
+            height: 24px;
+            background: rgba(0, 255, 136, 0.8);
+            border: 2px solid #fff;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+            z-index: 99999;
+            box-shadow: 0 0 20px var(--primary);
+            transition: width 0.15s, height 0.15s, background 0.15s, box-shadow 0.15s;
+            display: none;
+        }
+        .virtual-cursor.clicking {
+            width: 16px;
+            height: 16px;
+            background: var(--accent);
+            box-shadow: 0 0 30px var(--accent);
+            border-color: #fff;
+        }
+
+        .card.active-gesture {
+            border-color: var(--primary);
+            box-shadow: 0 0 30px rgba(0, 255, 136, 0.4);
+            transform: translateY(-5px);
+            background: var(--surface-hover);
+        }
+        .card.active-gesture::before { opacity: 1; }
+
+        .card-icon {
+            font-size: 40px;
+            margin-bottom: 20px;
+        }
+
+        /* Camera Section */
+        .camera-container {
+            margin: 0 auto 60px auto;
+            max-width: 640px;
+            border-radius: 20px;
+            overflow: hidden;
+            border: 2px solid var(--border-color);
+            position: relative;
+            background: #000;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .output_canvas {
+            width: 100%;
+            height: auto;
+            display: block;
+            transform: scaleX(-1); /* Mirror */
+        }
+        #gesture-output {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 12px 24px;
+            border-radius: 30px;
+            color: var(--primary);
+            font-weight: 800;
+            font-size: 18px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            white-space: nowrap;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .card:hover::before {
+            opacity: 1;
+        }
+
+        .card-icon {
+            font-size: 40px;
+            margin-bottom: 20px;
+        }
+
+        .card h3 {
+            font-size: 24px;
+            margin-bottom: 12px;
+            color: var(--text-main);
+        }
+
+        .card p {
+            color: var(--text-muted);
+            line-height: 1.6;
+            font-size: 15px;
+        }
+
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 40px;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-muted);
+            margin-top: 60px;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="bg-glow"></div>
+    <div class="virtual-cursor" id="virtual-cursor"></div>
+
+    <nav>
+        <div class="logo">AI AIR MOUSE</div>
+        <div>
+            <a href="#features" class="btn-primary" style="padding: 10px 20px; font-size: 14px;">Explore Features</a>
+        </div>
+    </nav>
+
+    <!-- Simulated UI Overlays -->
+    <div id="custom-context-menu" style="display:none; position:fixed; background:rgba(20,20,25,0.95); border:1px solid var(--border-color); border-radius:12px; padding:8px 0; z-index:10000; color:white; min-width:160px; box-shadow:0 10px 30px rgba(0,0,0,0.8); backdrop-filter:blur(10px);">
+        <div style="padding:10px 20px; cursor:pointer; font-size:14px; border-bottom:1px solid #333;">Open Link</div>
+        <div style="padding:10px 20px; cursor:pointer; font-size:14px; border-bottom:1px solid #333;">Copy Address</div>
+        <div style="padding:10px 20px; cursor:pointer; font-size:14px; color:var(--accent);">Delete</div>
+    </div>
+
+    <div id="volume-hud" style="display:none; position:fixed; top:50%; right:40px; transform:translateY(-50%); width:60px; height:250px; background:rgba(0,0,0,0.8); border:2px solid #333; border-radius:30px; z-index:10000; padding:10px; flex-direction:column; justify-content:flex-end; box-shadow:0 0 30px rgba(0,0,0,0.5); backdrop-filter:blur(10px);">
+        <div style="text-align:center; font-size:24px; margin-bottom:10px;">🔊</div>
+        <div style="width:100%; flex-grow:1; background:#222; border-radius:20px; display:flex; flex-direction:column; justify-content:flex-end; overflow:hidden;">
+            <div id="volume-fill" style="width:100%; height:50%; background:linear-gradient(0deg, var(--primary), var(--secondary)); transition: height 0.1s;"></div>
+        </div>
+    </div>
+
+    <div id="desktop-toast" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); font-size:56px; font-weight:900; color:white; background:rgba(10,10,15,0.85); padding:50px 100px; border-radius:40px; z-index:10000; backdrop-filter:blur(20px); border:1px solid var(--border-color); box-shadow:0 30px 60px rgba(0,0,0,0.6);">
+        Desktop 1
+    </div>
+
+    <div id="mission-toast" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); font-size:56px; font-weight:900; color:white; background:rgba(10,10,15,0.85); padding:50px 100px; border-radius:40px; z-index:10000; backdrop-filter:blur(20px); border:1px solid var(--border-color); box-shadow:0 30px 60px rgba(0,0,0,0.6);">
+        Mission Control
+    </div>
+
+    <header class="hero">
+        <h1>Control the Future with Your Hands</h1>
+        <p>Experience ultra-smooth, multi-display cursor control using cutting-edge MediaPipe AI and Kalman filtering. No hardware required—just your webcam.</p>
+        <a href="#features" class="btn-primary">View Gestures</a>
+    </header>
+
+    <div class="camera-container">
+        <video class="input_video" style="display: none;" playsinline></video>
+        <canvas class="output_canvas" width="640" height="480"></canvas>
+        <div id="gesture-output">Loading Camera...</div>
+    </div>
+
+    <section class="features" id="features">
+        <h2 class="section-title">Gesture Library</h2>
+        <div class="grid">
+            
+            <div class="card" id="card-move">
+                <div class="card-icon">☝️</div>
+                <h3>Move Cursor</h3>
+                <p>Extend your index finger. The cursor seamlessly follows your fingertip across all connected displays with predictive tracking.</p>
+            </div>
+
+            <div class="card" id="card-lclick">
+                <div class="card-icon">🤏</div>
+                <h3>Left Click</h3>
+                <p>Quickly pinch your index and middle fingers together to perform a single left click.</p>
+            </div>
+
+            <div class="card" id="card-dclick">
+                <div class="card-icon">✌️</div>
+                <h3>Double Click</h3>
+                <p>Rapidly pinch your index and middle fingers twice in quick succession to double click.</p>
+            </div>
+
+            <div class="card" id="card-drag">
+                <div class="card-icon">✊</div>
+                <h3>Drag & Drop</h3>
+                <p>Hold the pinch (index + middle) to enter drag mode. Move items across your screen effortlessly.</p>
+            </div>
+
+            <div class="card" id="card-rclick">
+                <div class="card-icon">🤞</div>
+                <h3>Right Click</h3>
+                <p>Pinch your index and ring fingers together to trigger a contextual right click.</p>
+            </div>
+
+            <div class="card" id="card-scrollup">
+                <div class="card-icon">🖐</div>
+                <h3>Scroll Up</h3>
+                <p>Three fingers up to scroll up. Keep them extended to scroll continuously.</p>
+            </div>
+            
+            <div class="card" id="card-scrolldown">
+                <div class="card-icon">🤙</div>
+                <h3>Scroll Down</h3>
+                <p>Extend only your pinky finger to scroll down the page continuously.</p>
+            </div>
+
+            <div class="card" id="card-volume">
+                <div class="card-icon">🔊</div>
+                <h3>Volume Control</h3>
+                <p>Pinch your thumb and index fingers. Move your hand up and down to adjust the system audio.</p>
+            </div>
+
+            <div class="card" id="card-swipe">
+                <div class="card-icon">💨</div>
+                <h3>Switch Desktop</h3>
+                <p>Keep all five fingers extended and perform a smooth horizontal swipe to switch macOS virtual desktops.</p>
+            </div>
+
+            <div class="card" id="card-mission">
+                <div class="card-icon">🌐</div>
+                <h3>Mission Control</h3>
+                <p>Keep all five fingers extended and perform a smooth vertical swipe up/down to open Mission Control or Exposé.</p>
+            </div>
+            
+            <div class="card" id="card-zoom">
+                <div class="card-icon">🔍</div>
+                <h3>Zoom In/Out</h3>
+                <p>Pinch your thumb and ring finger together. Move your hand up to zoom in, and down to zoom out.</p>
+            </div>
+
+        </div>
+    </section>
+
+    <footer>
+        <p>&copy; 2026 AI Air Mouse Project. Built with Python & MediaPipe.</p>
+    </footer>
+
+    <script>
+        // MediaPipe Integration
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        const canvasElement = document.getElementsByClassName('output_canvas')[0];
+        const canvasCtx = canvasElement.getContext('2d');
+        const gestureOutput = document.getElementById('gesture-output');
+        const virtualCursor = document.getElementById('virtual-cursor');
+
+        // Cursor Smoothing
+        let smoothX = window.innerWidth / 2;
+        let smoothY = window.innerHeight / 2;
+
+        function dist(lm1, lm2) {
+            return Math.hypot(lm1.x - lm2.x, lm1.y - lm2.y);
+        }
+
+        function triggerClick(x, y, isDouble) {
+            // Hide cursor to find element underneath
+            virtualCursor.style.display = 'none';
+            const el = document.elementFromPoint(x, y);
+            virtualCursor.style.display = 'block';
+
+            if (el) {
+                // If it's a link or button, click it natively
+                const clickable = el.closest('a, button');
+                if (clickable) {
+                    clickable.click();
+                } else {
+                    // Dispatch raw click event
+                    el.dispatchEvent(new MouseEvent(isDouble ? 'dblclick' : 'click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true,
+                        clientX: x,
+                        clientY: y
+                    }));
+                }
+                
+                // Visual ripple on the page
+                const ripple = document.createElement('div');
+                ripple.style.position = 'fixed';
+                ripple.style.left = `${x}px`;
+                ripple.style.top = `${y}px`;
+                ripple.style.width = '20px';
+                ripple.style.height = '20px';
+                ripple.style.background = 'rgba(0, 255, 136, 0.5)';
+                ripple.style.borderRadius = '50%';
+                ripple.style.transform = 'translate(-50%, -50%)';
+                ripple.style.pointerEvents = 'none';
+                ripple.style.zIndex = '999999';
+                ripple.style.transition = 'all 0.3s ease-out';
+                document.body.appendChild(ripple);
+                
+                setTimeout(() => {
+                    ripple.style.width = '80px';
+                    ripple.style.height = '80px';
+                    ripple.style.opacity = '0';
+                }, 10);
+                setTimeout(() => ripple.remove(), 300);
+            }
+        }
+
+        let pinchHoldFrames = 0;
+        let lastClickTime = 0;
+        let currentGesture = "IDLE";
+        let gestureLockTime = 0;
+
+        // Interaction State
+        let dragElement = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let currentDesktop = 1;
+        let lastSwipeTime = 0;
+        let lastRightClickTime = 0;
+        let lastScrollHandY = null;
+        let lastZoomY = null;
+        let currentZoomScale = 1;
+        let historyX = [];
+        let historyY = [];
+
+        function updateCards(gesture) {
+            const now = Date.now();
+            
+            if (['LEFT_CLICK', 'DOUBLE_CLICK', 'RIGHT_CLICK'].includes(gesture)) {
+                currentGesture = gesture;
+                gestureLockTime = now + 600;
+            } else if (now > gestureLockTime) {
+                if (gesture === "LEFT_CLICK_HOLD") gesture = "LEFT_CLICK";
+                currentGesture = gesture;
+            }
+
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('active-gesture'));
+            let text = "Waiting for hand...";
+            let cardId = null;
+
+            switch(currentGesture) {
+                case 'MOVE': cardId = 'card-move'; text = "☝️ Moving Cursor"; break;
+                case 'LEFT_CLICK': cardId = 'card-lclick'; text = "🤏 Left Click"; break;
+                case 'DOUBLE_CLICK': cardId = 'card-dclick'; text = "✌️ Double Click"; break;
+                case 'DRAGGING': cardId = 'card-drag'; text = "✊ Dragging"; break;
+                case 'RIGHT_CLICK': cardId = 'card-rclick'; text = "🤞 Right Click"; break;
+                case 'SCROLL_UP': cardId = 'card-scrollup'; text = "🖐 Scroll Up"; break;
+                case 'SCROLL_DOWN': cardId = 'card-scrolldown'; text = "🤙 Scroll Down"; break;
+                case 'VOLUME': cardId = 'card-volume'; text = "🔊 Volume Control"; break;
+                case 'SWIPE': cardId = 'card-swipe'; text = "💨 Desktop Swipe"; break;
+                case 'MISSION_CTRL': cardId = 'card-mission'; text = "🌐 Mission Control"; break;
+                case 'ZOOM': cardId = 'card-zoom'; text = "🔍 Zooming"; break;
+                case 'IDLE': text = "Hand Detected - No Gesture"; break;
+            }
+
+            gestureOutput.innerText = text;
+            if (cardId) document.getElementById(cardId).classList.add('active-gesture');
+        }
+
+        function onResults(results) {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            let detected = "IDLE";
+
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const landmarks = results.multiHandLandmarks[0];
+                drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF88', lineWidth: 4});
+                drawLandmarks(canvasCtx, landmarks, {color: '#FF007B', lineWidth: 2, radius: 3});
+
+                const p12 = dist(landmarks[8], landmarks[12]);
+                const p14 = dist(landmarks[8], landmarks[16]);
+                const p48 = dist(landmarks[4], landmarks[8]);
+                const p416 = dist(landmarks[4], landmarks[16]);
+                
+                const tips = [8, 12, 16, 20];
+                const bases = [6, 10, 14, 18];
+                const fingersUp = tips.map((t, i) => landmarks[t].y < landmarks[bases[i]].y);
+                const [indexUp, middleUp, ringUp, pinkyUp] = fingersUp;
+                const thumbExt = dist(landmarks[4], landmarks[17]) > 0.1;
+
+                const now = Date.now();
+                const indexTip = landmarks[8];
+
+                // Map normalized coords to screen pixels (mirrored X)
+                let targetX = (1 - indexTip.x) * window.innerWidth;
+                let targetY = indexTip.y * window.innerHeight;
+
+                historyX.push(targetX);
+                historyY.push(targetY);
+                if (historyX.length > 15) { historyX.shift(); historyY.shift(); }
+
+                if (indexUp && middleUp && ringUp && !pinkyUp) detected = "SCROLL_UP";
+                else if (!indexUp && !middleUp && !ringUp && pinkyUp) detected = "SCROLL_DOWN";
+                else if (p48 < 0.05 && !middleUp && !ringUp && !pinkyUp) detected = "VOLUME";
+                else if (p416 < 0.05 && middleUp) detected = "ZOOM";
+                else if (indexUp && middleUp && ringUp && pinkyUp && thumbExt && historyX.length === 15) {
+                    const dx = historyX[14] - historyX[0];
+                    const dy = historyY[14] - historyY[0];
+                    if (Math.abs(dx) > 100) detected = "SWIPE";
+                    else if (Math.abs(dy) > 100) detected = "MISSION_CTRL";
+                }
+                else if (p14 < 0.05 && p12 > 0.07) detected = "RIGHT_CLICK";
+                else if (p12 < 0.05) {
+                    pinchHoldFrames++;
+                    detected = (pinchHoldFrames > 15) ? "DRAGGING" : "LEFT_CLICK_HOLD";
+                } else {
+                    if (pinchHoldFrames > 0 && pinchHoldFrames <= 15) {
+                        if (now - lastClickTime < 400) {
+                            lastClickTime = 0;
+                            detected = "DOUBLE_CLICK";
+                            triggerClick(smoothX, smoothY, true);
+                        } else {
+                            lastClickTime = now;
+                            detected = "LEFT_CLICK";
+                            triggerClick(smoothX, smoothY, false);
+                        }
+                    } else if (indexUp && !middleUp && !ringUp && !pinkyUp) {
+                        detected = "MOVE";
+                    }
+                    pinchHoldFrames = 0;
+                }
+                
+                // Transient state overrides
+                if (now - lastClickTime < 300 && lastClickTime !== 0 && detected === "IDLE") {
+                    detected = "LEFT_CLICK";
+                }
+
+                updateCards(detected);
+
+                // --- VIRTUAL CURSOR LOGIC ---
+                // Exponential smoothing for trackpad feel
+                smoothX += (targetX - smoothX) * 0.3;
+                smoothY += (targetY - smoothY) * 0.3;
+
+                virtualCursor.style.display = 'block';
+                virtualCursor.style.left = `${smoothX}px`;
+                virtualCursor.style.top = `${smoothY}px`;
+
+                // React to clicks
+                if (['LEFT_CLICK', 'LEFT_CLICK_HOLD', 'DRAGGING', 'DOUBLE_CLICK'].includes(detected)) {
+                    virtualCursor.classList.add('clicking');
+                } else {
+                    virtualCursor.classList.remove('clicking');
+                }
+
+                // --- FEATURE INTERACTIONS ---
+                
+                // 1. SCROLLING (Based on Hand Movement)
+                if (detected === "SCROLL_UP" || detected === "SCROLL_DOWN") {
+                    if (lastScrollHandY !== null) {
+                        // Calculate how much the hand moved
+                        const deltaY = targetY - lastScrollHandY;
+                        // Scroll the window by that amount (multiplied for speed)
+                        window.scrollBy({ top: deltaY * 1.5 });
+                    }
+                    lastScrollHandY = targetY;
+                } else {
+                    lastScrollHandY = null;
+                }
+
+                // 2. RIGHT CLICK (Context Menu)
+                const ctxMenu = document.getElementById('custom-context-menu');
+                if (detected === "RIGHT_CLICK" && now - lastRightClickTime > 1000) {
+                    ctxMenu.style.display = 'block';
+                    ctxMenu.style.left = `${smoothX}px`;
+                    ctxMenu.style.top = `${smoothY}px`;
+                    lastRightClickTime = now;
+                } else if (detected === "LEFT_CLICK") {
+                    ctxMenu.style.display = 'none'; // hide on left click
+                }
+
+                // 3. VOLUME CONTROL
+                const volHud = document.getElementById('volume-hud');
+                if (detected === "VOLUME") {
+                    volHud.style.display = 'flex';
+                    const vol = Math.max(0, Math.min(100, (0.8 - indexTip.y) / 0.6 * 100));
+                    document.getElementById('volume-fill').style.height = `${vol}%`;
+                } else {
+                    volHud.style.display = 'none';
+                }
+
+                // 4. SWITCH DESKTOP (SWIPE)
+                const toast = document.getElementById('desktop-toast');
+                if (detected === "SWIPE" && now - lastSwipeTime > 1500) {
+                    // detect horizontal speed using the unsmoothed X
+                    const dx = targetX - smoothX;
+                    if (Math.abs(dx) > 10) {
+                        if (dx > 0) currentDesktop = currentDesktop < 3 ? currentDesktop + 1 : 1;
+                        else currentDesktop = currentDesktop > 1 ? currentDesktop - 1 : 3;
+                        
+                        toast.innerText = `Desktop ${currentDesktop}`;
+                        toast.style.display = 'block';
+                        
+                        // Change background color slightly to indicate desktop change
+                        const hues = [150, 200, 280]; // Green, Blue, Purple
+                        document.querySelector('.bg-glow').style.background = `radial-gradient(circle, hsl(${hues[currentDesktop-1]}, 100%, 50%, 0.1) 0%, transparent 80%)`;
+                        
+                        lastSwipeTime = now;
+                        setTimeout(() => { toast.style.display = 'none'; }, 1000);
+                    }
+                }
+
+                // 5. MISSION CONTROL
+                const missionToast = document.getElementById('mission-toast');
+                if (detected === "MISSION_CTRL" && now - lastSwipeTime > 1500) {
+                    const dy = historyY[14] - historyY[0];
+                    missionToast.innerText = dy < 0 ? "Mission Control" : "App Exposé";
+                    missionToast.style.display = 'block';
+                    lastSwipeTime = now;
+                    setTimeout(() => { missionToast.style.display = 'none'; }, 1000);
+                }
+
+                // 6. ZOOM
+                if (detected === "ZOOM") {
+                    if (lastZoomY !== null) {
+                        const dz = targetY - lastZoomY;
+                        currentZoomScale = Math.max(0.5, Math.min(2.0, currentZoomScale - dz * 0.005));
+                        document.body.style.transform = `scale(${currentZoomScale})`;
+                        document.body.style.transformOrigin = `50% 50%`;
+                    }
+                    lastZoomY = targetY;
+                } else {
+                    lastZoomY = null;
+                    if (currentZoomScale !== 1) {
+                        // Slowly return to 1
+                        currentZoomScale += (1 - currentZoomScale) * 0.1;
+                        document.body.style.transform = `scale(${currentZoomScale})`;
+                    }
+                }
+
+                // 7. DRAG & DROP
+                if (detected === "DRAGGING") {
+                    if (!dragElement) {
+                        virtualCursor.style.display = 'none';
+                        const el = document.elementFromPoint(smoothX, smoothY);
+                        virtualCursor.style.display = 'block';
+                        
+                        const card = el ? el.closest('.card') : null;
+                        if (card) {
+                            dragElement = card;
+                            const rect = card.getBoundingClientRect();
+                            dragOffsetX = smoothX - rect.left;
+                            dragOffsetY = smoothY - rect.top;
+                            // Make it float
+                            card.style.position = 'fixed';
+                            card.style.zIndex = '1000';
+                            card.style.width = `${rect.width}px`;
+                            card.style.pointerEvents = 'none'; // so we don't drop on ourselves
+                        }
+                    }
+                    if (dragElement) {
+                        dragElement.style.left = `${smoothX - dragOffsetX}px`;
+                        dragElement.style.top = `${smoothY - dragOffsetY}px`;
+                        dragElement.style.boxShadow = '0 30px 60px rgba(0,0,0,0.8)';
+                        dragElement.style.transform = 'scale(1.05)';
+                    }
+                } else {
+                    if (dragElement) {
+                        // Drop it
+                        dragElement.style.position = 'static';
+                        dragElement.style.zIndex = '';
+                        dragElement.style.width = '';
+                        dragElement.style.pointerEvents = '';
+                        dragElement.style.boxShadow = '';
+                        dragElement.style.transform = '';
+                        dragElement = null;
+                    }
+                }
+
+            } else {
+                gestureOutput.innerText = "Waiting for hand...";
+                document.querySelectorAll('.card').forEach(c => c.classList.remove('active-gesture'));
+                pinchHoldFrames = 0;
+                virtualCursor.style.display = 'none';
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+        }});
+        hands.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.7,
+            minTrackingConfidence: 0.7
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await hands.send({image: videoElement});
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start().then(() => {
+            gestureOutput.innerText = "Show your hand!";
+        }).catch((err) => {
+            gestureOutput.innerText = "Camera Error: " + err.message;
+            console.error("Camera start error:", err);
+        });
+    </script>
+</body>
+</html>
